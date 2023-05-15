@@ -10,8 +10,19 @@ inputs:
     description: The path(s) to use for pip caching, defaults to setup + pdm
     required: false
     default: |
+      requirements/
+      requirements.txt
       pyproject.toml
       setup.py
+  dependencies:
+    description: Other python dependencies to install
+    required: false
+  nox-setup:
+    description: |
+      The dependencies to install using `nox -s setup`.
+      Automatically installs nox as well.
+      Use `*` to install all dependencies.
+    required: false
 outputs:
   python-version:
     description: The python version that was installed.
@@ -50,6 +61,22 @@ runs:
     - name: Install nox
       shell: bash
       run: pip install nox
+    
+    - name: Install dependencies
+      if: inputs.nox-setup || inputs.dependencies
+      env:
+        NOX_SETUP: ${{ inputs.nox-setup }}
+        DEPS: ${{ inputs.dependencies }}
+      shell: bash
+      run: |
+        [ -n "$NOX_SETUP" ] && DEPS="$DEPS nox"
+        python -m pip install $DEPS
+
+        if [ "*" == "$NOX_SETUP" ]; then
+          nox -s setup
+        elif [ -n "$NOX_SETUP" ]; then
+          nox -s setup -- $NOX_SETUP
+        fi
 
     - name: Set python version
       id: python-version
