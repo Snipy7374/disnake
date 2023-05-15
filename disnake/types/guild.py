@@ -41,6 +41,8 @@ GuildFeature = Literal[
     "BANNER",
     "COMMUNITY",
     "CREATOR_MONETIZABLE",  # not yet documented/finalised
+    "CREATOR_MONETIZABLE_PROVISIONAL",
+    "CREATOR_STORE_PAGE",
     "DEVELOPER_SUPPORT_SERVER",
     "DISCOVERABLE",
     "ENABLED_DISCOVERABLE_BEFORE",
@@ -53,7 +55,6 @@ GuildFeature = Literal[
     "LINKED_TO_HUB",
     "MEMBER_PROFILES",  # not sure what this does, if anything
     "MEMBER_VERIFICATION_GATE_ENABLED",
-    "MONETIZATION_ENABLED",
     "MORE_EMOJI",
     "MORE_STICKERS",
     "NEWS",
@@ -63,8 +64,8 @@ GuildFeature = Literal[
     "PRIVATE_THREADS",  # deprecated
     "RELAY_ENABLED",
     "ROLE_ICONS",
-    "ROLE_SUBSCRIPTIONS_AVAILABLE_FOR_PURCHASE",  # not yet documented/finalised
-    "ROLE_SUBSCRIPTIONS_ENABLED",  # not yet documented/finalised
+    "ROLE_SUBSCRIPTIONS_AVAILABLE_FOR_PURCHASE",
+    "ROLE_SUBSCRIPTIONS_ENABLED",
     "SEVEN_DAY_THREAD_ARCHIVE",  # deprecated
     "TEXT_IN_VOICE_ENABLED",  # deprecated
     "THREADS_ENABLED",  # deprecated
@@ -121,6 +122,7 @@ class Guild(_BaseGuildPreview):
     preferred_locale: str
     public_updates_channel_id: Optional[Snowflake]
     max_video_channel_users: NotRequired[int]
+    max_stage_video_channel_users: NotRequired[int]
     approximate_member_count: NotRequired[int]
     approximate_presence_count: NotRequired[int]
     nsfw_level: NSFWLevel

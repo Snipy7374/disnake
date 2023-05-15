@@ -216,6 +216,7 @@ MessageComponentInteractionData = Union[
 
 ### Modal interaction components
 
+
 # TODO: add other select types
 class ModalInteractionStringSelectData(_BaseComponentInteractionData):
     type: Literal[3]
@@ -305,7 +306,7 @@ class InteractionApplicationCommandCallbackData(TypedDict, total=False):
     allowed_mentions: AllowedMentions
     flags: int
     components: List[Component]
-    # TODO: missing attachment field
+    attachments: List[Attachment]
 
 
 class InteractionAutocompleteCallbackData(TypedDict):
