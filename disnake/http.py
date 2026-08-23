@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 import sys
-import weakref
+import time
 from collections.abc import Coroutine, Iterable, Sequence
 from errno import ECONNRESET
 from typing import (
@@ -212,6 +212,104 @@ class MaybeUnlock:
             self.lock.release()
 
 
+class RateLimitBucket:
+    def __init__(
+        self,
+        limit: int = 0,
+        reset_after: float = float("inf"),
+        is_global: bool = False
+    ) -> None:
+        self.limit: int = limit
+        self.reset_at: float = time.time() + reset_after
+        self.lock = asyncio.Lock()
+        self.can_request = asyncio.Event()
+
+        if self.limit > 0:
+            self.can_request.set()
+        else:
+            self.can_request.clear()
+
+        self.is_global = is_global
+        self._first_update = True
+
+    async def update(self, limit: int, reset_after: float) -> None:
+        new_reset_at: float = time.time() + reset_after
+        async with self.lock:
+            if self._first_update:
+                self._first_update = False
+                self.reset_at = new_reset_at
+                self.limit = limit
+            
+            elif new_reset_at > self.reset_at + 2:
+                self.reset_at = new_reset_at
+                self.limit = limit
+                
+            else:
+                if new_reset_at > self.reset_at:
+                    self.reset_at = new_reset_at
+                self.limit = min(self.limit, limit)
+
+            if self.limit > 0 and not self.can_request.is_set():
+                self.can_request.set()
+            elif self.limit <= 0 and self.can_request.is_set():
+                self.can_request.clear()
+
+    async def acquire(self) -> None:
+        while True:
+            now: float = time.time()
+            wait_time: float = (self.reset_at - now) + 0.3
+            
+            if wait_time > 0 and not self.can_request.is_set():
+                try:
+                    print(f"\n\nWaiting for {wait_time} {self.reset_at}\n\n")
+                    await asyncio.sleep(wait_time)
+                except asyncio.TimeoutError:
+                    pass
+
+            async with self.lock:
+                print("woo")
+                if self.is_global and time.time() >= self.reset_at:
+                    self.limit = 50
+                    self.reset_at = time.time() + 1
+                    if not self.can_request.is_set():
+                        self.can_request.set()
+                
+                if self.limit > 0:
+                    self.limit -= 1
+
+                    if self.limit == 0:
+                        self.can_request.clear() 
+                    return
+
+                elif time.time() >= self.reset_at:
+                    self.reset_at = time.time() + 2.0
+                    return
+
+
+class RateLimiter:
+    def __init__(self) -> None:
+        self._routes_to_buckets: dict[tuple[str, str], str] = dict()
+        self._buckets: dict[str, RateLimitBucket] = dict()
+        self._global_bucket: RateLimitBucket = RateLimitBucket(limit=50, reset_after=1, is_global=True)
+
+    def create_bucket(self, bucket: str, route: Route, limit: int, reset_after: float) -> RateLimitBucket:
+        self._routes_to_buckets[(route.path, route.method)] = bucket
+        obj = RateLimitBucket(limit, reset_after)
+        self._buckets[bucket] = obj
+        return obj
+
+    def get_global_bucket(self) -> RateLimitBucket:
+        return self._global_bucket
+
+    def get_bucket(self, bucket: str) -> RateLimitBucket | None:
+        return self._buckets.get(bucket)
+
+    def get_bucket_from_route(self, route: Route) -> RateLimitBucket | None:
+        bucket = self._routes_to_buckets.get((route.path, route.method))
+        if bucket is None:
+            return
+        return self.get_bucket(bucket)
+
 # For some reason, the Discord voice websocket expects this header to be
 # completely lowercase while aiohttp respects spec and does it as case-insensitive
 aiohttp.hdrs.WEBSOCKET = "websocket"  # pyright: ignore[reportAttributeAccessIssue]
@@ -232,14 +330,13 @@ class HTTPClient:
         self.loop: asyncio.AbstractEventLoop = loop
         self.connector = connector
         self.__session: aiohttp.ClientSession = MISSING  # filled in static_login
-        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
-        self._global_over: asyncio.Event = asyncio.Event()
-        self._global_over.set()
         self.token: str | None = None
         self.bot_token: bool = False
         self.proxy: str | None = proxy
         self.proxy_auth: aiohttp.BasicAuth | None = proxy_auth
         self.use_clock: bool = not unsync_clock
+
+        self.rate_limiter = RateLimiter()
 
         user_agent = "DiscordBot (https://github.com/DisnakeDev/disnake {0}) Python/{1[0]}.{1[1]} aiohttp/{2}"
         self.user_agent: str = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
@@ -278,13 +375,13 @@ class HTTPClient:
         form: Iterable[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> Any:
-        bucket = route.bucket
         method = route.method
         url = route.url
 
-        lock = self._locks.get(bucket)
-        if lock is None:
-            self._locks[bucket] = lock = asyncio.Lock()
+        bucket = self.rate_limiter.get_bucket_from_route(route)
+        if bucket is None:
+            print("\n\nBucket is None\n\n")
+            bucket = self.rate_limiter.create_bucket(route.bucket, route, limit=1, reset_after=5)
 
         # header creation
         headers: dict[str, str] = {
@@ -314,129 +411,123 @@ class HTTPClient:
         if self.proxy_auth is not None:
             kwargs["proxy_auth"] = self.proxy_auth
 
-        if not self._global_over.is_set():
-            # wait until the global lock is complete
-            await self._global_over.wait()
+        global_bucket = self.rate_limiter.get_global_bucket()
 
         response: aiohttp.ClientResponse | None = None
         data: dict[str, Any] | str | None = None
-        await lock.acquire()
-        with MaybeUnlock(lock) as maybe_lock:
-            for tries in range(5):
-                if files:
-                    for f in files:
-                        f.reset(seek=tries)
+        for tries in range(5):
+            await global_bucket.acquire()
+            await bucket.acquire()
 
-                if form:
-                    # NOTE: for `quote_fields`, see https://github.com/aio-libs/aiohttp/issues/4012
-                    form_data = aiohttp.FormData(quote_fields=False)
-                    for p in form:
-                        # manually escape chars, just in case
-                        name = re.sub(
-                            r"[^\x21\x23-\x5b\x5d-\x7e]", lambda m: f"\\{m.group(0)}", p["name"]
-                        )
-                        form_data.add_field(
-                            name=name, **{k: v for k, v in p.items() if k != "name"}
-                        )
-                    kwargs["data"] = form_data
+            if files:
+                for f in files:
+                    f.reset(seek=tries)
 
-                try:
-                    async with self.__session.request(method, url, **kwargs) as response:
-                        _log.debug(
-                            "%s %s with %s has returned %s",
-                            method,
-                            url,
-                            kwargs.get("data"),
-                            response.status,
-                        )
+            if form:
+                # NOTE: for `quote_fields`, see https://github.com/aio-libs/aiohttp/issues/4012
+                form_data = aiohttp.FormData(quote_fields=False)
+                for p in form:
+                    # manually escape chars, just in case
+                    name = re.sub(
+                        r"[^\x21\x23-\x5b\x5d-\x7e]", lambda m: f"\\{m.group(0)}", p["name"]
+                    )
+                    form_data.add_field(
+                        name=name, **{k: v for k, v in p.items() if k != "name"}
+                    )
+                kwargs["data"] = form_data
 
-                        # even errors have text involved in them so this is safe to call
-                        data = await json_or_text(response)
+            try:
+                async with self.__session.request(method, url, **kwargs) as response:
+                    _log.debug(
+                        "%s %s with %s has returned %s",
+                        method,
+                        url,
+                        kwargs.get("data"),
+                        response.status,
+                    )
 
-                        # check if we have rate limit header information
-                        remaining = response.headers.get("X-Ratelimit-Remaining")
-                        if remaining == "0" and response.status != 429:
-                            # we've depleted our current bucket
-                            delta = utils._parse_ratelimit_header(
-                                response, use_clock=self.use_clock
-                            )
-                            _log.debug(
-                                "A rate limit bucket has been exhausted (bucket: %s, retry: %s).",
-                                bucket,
-                                delta,
-                            )
-                            maybe_lock.defer()
-                            self.loop.call_later(delta, lock.release)
+                    # even errors have text involved in them so this is safe to call
+                    data = await json_or_text(response)
 
-                        # the request was successful so just return the text/json
-                        if 300 > response.status >= 200:
-                            _log.debug("%s %s has received %s", method, url, data)
-                            return data
+                    # check if we have rate limit header information
+                    bucket_id = response.headers.get("X-RateLimit-Bucket")
+                    remaining = int(response.headers.get("X-RateLimit-Remaining", bucket.limit))
+                    reset_after = float(response.headers.get("X-RateLimit-Reset-After", 0.0))
+                    print("\n\n from discord", response.headers.get("X-RateLimit-Reset"))
 
-                        # we are being rate limited
-                        if response.status == 429:
-                            if not response.headers.get("Via") or isinstance(data, str):
-                                # Banned by Cloudflare more than likely.
-                                raise HTTPException(response, data)
+                    _log.debug("NIGGER %s %s", remaining, reset_after)
 
-                            fmt = 'We are being rate limited. Retrying in %.2f seconds. Handled under the bucket "%s"'
+                    if bucket_id is not None:
+                        self.rate_limiter._routes_to_buckets[(route.path, route.method)] = bucket_id
+                        if bucket_id not in self.rate_limiter._buckets:
+                            self.rate_limiter._buckets[bucket_id] = bucket
+                    
+                    await bucket.update(remaining, reset_after)
 
-                            # sleep a bit
-                            retry_after: float = data["retry_after"]
-                            _log.warning(fmt, retry_after, bucket)
+                    # the request was successful so just return the text/json
+                    if 300 > response.status >= 200:
+                        _log.debug("%s %s has received %s", method, url, data)
+                        return data
 
-                            # check if it's a global rate limit
-                            is_global = data.get("global", False)
-                            if is_global:
-                                _log.warning(
-                                    "Global rate limit has been hit. Retrying in %.2f seconds.",
-                                    retry_after,
-                                )
-                                self._global_over.clear()
-
-                            await asyncio.sleep(retry_after)
-                            _log.debug("Done sleeping for the rate limit. Retrying...")
-
-                            # release the global lock now that the
-                            # global rate limit has passed
-                            if is_global:
-                                self._global_over.set()
-                                _log.debug("Global rate limit is now over.")
-
-                            continue
-
-                        # we've received a 500, 502, or 504, unconditional retry
-                        if response.status in {500, 502, 504}:
-                            await asyncio.sleep(1 + tries * 2)
-                            continue
-
-                        # the usual error cases
-                        if response.status == 403:
-                            raise Forbidden(response, data)
-                        elif response.status == 404:
-                            raise NotFound(response, data)
-                        elif response.status >= 500:
-                            raise DiscordServerError(response, data)
-                        else:
+                    # we are being rate limited
+                    if response.status == 429:
+                        if not response.headers.get("Via") or isinstance(data, str):
+                            # Banned by Cloudflare more than likely.
                             raise HTTPException(response, data)
 
-                # This is handling exceptions from the request
-                except OSError as e:
-                    # Connection reset by peer
-                    if tries < 4 and e.errno == ECONNRESET:
+                        fmt = 'We are being rate limited. Retrying in %.2f seconds. Handled under the bucket "%s"'
+
+                        # sleep a bit
+                        retry_after: float = data["retry_after"]
+                        _log.warning(fmt, retry_after, bucket)
+
+                        # check if it's a global rate limit
+                        is_global = data.get("global", False)
+                        if is_global:
+                            _log.warning(
+                                "Global rate limit has been hit. Retrying in %.2f seconds.",
+                                retry_after,
+                            )
+                            await global_bucket.update(0, retry_after)
+                        else:
+                            await bucket.update(0, retry_after)
+
+                        await asyncio.sleep(retry_after)
+                        _log.debug("Done sleeping for the rate limit. Retrying...")
+                        continue
+
+                    # we've received a 500, 502, or 504, unconditional retry
+                    if response.status in {500, 502, 504}:
                         await asyncio.sleep(1 + tries * 2)
                         continue
-                    raise
 
-            if response is not None:
-                # We've run out of retries, raise.
-                if response.status >= 500:
-                    raise DiscordServerError(response, data)
+                    # the usual error cases
+                    if response.status == 403:
+                        raise Forbidden(response, data)
+                    elif response.status == 404:
+                        raise NotFound(response, data)
+                    elif response.status >= 500:
+                        raise DiscordServerError(response, data)
+                    else:
+                        raise HTTPException(response, data)
 
-                raise HTTPException(response, data)
+            # This is handling exceptions from the request
+            except OSError as e:
+                # Connection reset by peer
+                if tries < 4 and e.errno == ECONNRESET:
+                    await asyncio.sleep(1 + tries * 2)
+                    continue
+                raise
 
-            msg = "Unreachable code in HTTP handling"
-            raise RuntimeError(msg)
+        if response is not None:
+            # We've run out of retries, raise.
+            if response.status >= 500:
+                raise DiscordServerError(response, data)
+
+            raise HTTPException(response, data)
+
+        msg = "Unreachable code in HTTP handling"
+        raise RuntimeError(msg)
 
     async def get_from_cdn(self, url: str) -> bytes:
         async with self.__session.get(url) as resp:
