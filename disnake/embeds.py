@@ -469,11 +469,11 @@ class Embed:
         - ``height``
         - ``flags``
 
+        If an attribute is not set, it will be :data:`None`.
+
         .. versionchanged:: |vnext|
 
             Added the ``flags`` attribute.
-
-        If an attribute is not set, it will be :data:`None`.
         """
         return cast("_EmbedMediaProxy", EmbedProxy(self._image))
 
