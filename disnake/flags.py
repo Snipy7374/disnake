@@ -2637,7 +2637,7 @@ class AttachmentFlags(BaseFlags):
 
     @flag_value
     def is_clip(self):
-        """:class:`bool`: Returns ``True`` if the attachment is a clip.
+        """:class:`bool`: Returns ``True`` if the attachment is a clip from a stream.
 
         .. versionadded:: |vnext|
         """
