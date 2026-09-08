@@ -267,13 +267,13 @@ class Attachment(Hashable):
 
         .. versionadded:: 2.9
 
-    clip_participants: List[:class:`User`]
-        If this attachment is a clip returns a list of users who were in the stream.
+    clip_participants: :class:`list`\[:class:`User`]
+        The list of users who were in the stream, if this attachment is a clip.
 
         .. versionadded:: |vnext|
 
-    clip_created_at: Optional[:class:`datetime.datetime`]
-        If this attachment is a clip returns the creation timestamp.
+    clip_created_at: :class:`datetime.datetime` | :data:`None`
+        The creation timestamp, if this attachment is a clip.
 
         .. versionadded:: |vnext|
     """
