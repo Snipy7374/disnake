@@ -192,7 +192,7 @@ async def _edit_handler(
 
 
 class Attachment(Hashable):
-    """Represents an attachment from Discord.
+    r"""Represents an attachment from Discord.
 
     .. collapse:: operations
 
@@ -267,7 +267,7 @@ class Attachment(Hashable):
 
         .. versionadded:: 2.9
 
-    clip_participants: :class:`list`[:class:`User`]
+    clip_participants: :class:`list`\[:class:`User`]
         The list of users who were in the stream, if this attachment is a clip.
 
         .. versionadded:: |vnext|
