@@ -55,6 +55,14 @@ class EmbedProxy:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EmbedProxy) and self.__dict__ == other.__dict__
 
+    @property
+    def flags(self):
+        """:class:`EmbedMediaFlags`: the flags for this embed media object.
+
+        .. versionadded:: |vnext|
+        """
+        return EmbedMediaFlags._from_value(self._flags) if self.flags else None  # pyright: ignore[reportArgumentType]
+
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -64,11 +72,9 @@ if TYPE_CHECKING:
         EmbedAuthor as EmbedAuthorPayload,
         EmbedField as EmbedFieldPayload,
         EmbedFooter as EmbedFooterPayload,
-        EmbedImage as EmbedImagePayload,
+        EmbedMedia as EmbedMediaPayload,
         EmbedProvider as EmbedProviderPayload,
-        EmbedThumbnail as EmbedThumbnailPayload,
         EmbedType,
-        EmbedVideo as EmbedVideoPayload,
     )
 
     class _EmbedFooterProxy(Sized, Protocol):
@@ -86,13 +92,11 @@ if TYPE_CHECKING:
         proxy_url: str | None
         height: int | None
         width: int | None
-        flags: EmbedMediaFlags | None
-
-    class _EmbedVideoProxy(Sized, Protocol):
-        url: str | None
-        proxy_url: str | None
-        height: int | None
-        width: int | None
+        content_type: str | None
+        placeholder: str | None
+        placeholder_version: int | None
+        description: str | None
+        flags: int | None
 
     class _EmbedProviderProxy(Sized, Protocol):
         name: str | None
@@ -212,11 +216,11 @@ class Embed:
             color = colour
         self.colour = color
 
-        self._thumbnail: EmbedThumbnailPayload | None = None
-        self._video: EmbedVideoPayload | None = None
+        self._thumbnail: EmbedMediaPayload | None = None
+        self._video: EmbedMediaPayload | None = None
         self._provider: EmbedProviderPayload | None = None
         self._author: EmbedAuthorPayload | None = None
-        self._image: EmbedImagePayload | None = None
+        self._image: EmbedMediaPayload | None = None
         self._footer: EmbedFooterPayload | None = None
         self._fields: list[EmbedFieldPayload] | None = None
         self._flags: int = 0
@@ -263,16 +267,18 @@ class Embed:
         self.timestamp = utils.parse_time(data.get("timestamp"))
 
         self._thumbnail = data.get("thumbnail")
-        if self._thumbnail and (thumbnail_flags := self._thumbnail.get("flags")):
-            self._thumbnail["flags"] = EmbedMediaFlags._from_value(thumbnail_flags)  # pyright: ignore[reportGeneralTypeIssues]
+        if self._thumbnail:
+            self._thumbnail["_flags"] = self._thumbnail.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
 
         self._video = data.get("video")
+        if self._video:
+            self._video["_flags"] = self._video.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
         self._provider = data.get("provider")
         self._author = data.get("author")
 
         self._image = data.get("image")
-        if self._image and (image_flags := self._image.get("flags")):
-            self._image["flags"] = EmbedMediaFlags._from_value(image_flags)  # pyright: ignore[reportGeneralTypeIssues]
+        if self._image:
+            self._image["_flags"] = self._image.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
 
         self._footer = data.get("footer")
         self._fields = data.get("fields")
@@ -574,7 +580,7 @@ class Embed:
         return self
 
     @property
-    def video(self) -> _EmbedVideoProxy:
+    def video(self) -> _EmbedMediaProxy:
         """Returns an ``EmbedProxy`` denoting the video contents.
 
         Possible attributes include:
@@ -586,7 +592,7 @@ class Embed:
 
         If an attribute is not set, it will be :data:`None`.
         """
-        return cast("_EmbedVideoProxy", EmbedProxy(self._video))
+        return cast("_EmbedMediaProxy", EmbedProxy(self._video))
 
     @property
     def provider(self) -> _EmbedProviderProxy:

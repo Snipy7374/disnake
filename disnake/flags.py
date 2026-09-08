@@ -43,6 +43,7 @@ __all__ = (
     "InteractionContextTypes",
     "EmbedFlags",
     "EmbedMediaFlags",
+    "UnfurledMediaItemFlags",
 )
 
 BF = TypeVar("BF", bound="BaseFlags")
@@ -3045,14 +3046,7 @@ class EmbedFlags(BaseFlags):
     if TYPE_CHECKING:
 
         @_generated
-        def __init__(
-            self, *, contains_explicit_media: bool = ..., is_content_inventory_entry: bool = ...
-        ) -> None: ...
-
-    @flag_value
-    def contains_explicit_media(self):
-        """:class:`bool`: Returns ``True`` if the embed was flagged as sensitive content."""
-        return 1 << 4
+        def __init__(self, *, is_content_inventory_entry: bool = ...) -> None: ...
 
     @flag_value
     def is_content_inventory_entry(self):
@@ -3135,3 +3129,80 @@ class EmbedMediaFlags(BaseFlags):
     def is_animated(self):
         """:class:`bool`: Returns ``True`` if the embed image is animated."""
         return 1 << 5
+
+
+class UnfurledMediaItemFlags(BaseFlags):
+    """Wraps up Discord unfurled media item flags.
+
+    .. collapse:: operations
+
+        .. describe:: x == y
+
+            Checks if two UnfurledMediaItemFlags instances are equal.
+        .. describe:: x != y
+
+            Checks if two UnfurledMediaItemFlags instances are not equal.
+        .. describe:: x <= y
+
+            Checks if an UnfurledMediaItemFlags instance is a subset of another UnfurledMediaItemFlags instance.
+        .. describe:: x >= y
+
+            Checks if an UnfurledMediaItemFlags instance is a superset of another UnfurledMediaItemFlags instance.
+        .. describe:: x < y
+
+            Checks if an UnfurledMediaItemFlags instance is a strict subset of another UnfurledMediaItemFlags instance.
+        .. describe:: x > y
+
+            Checks if an UnfurledMediaItemFlags instance is a strict superset of another UnfurledMediaItemFlags instance.
+        .. describe:: x | y, x |= y
+
+            Returns a new UnfurledMediaItemFlags instance with all enabled flags from both x and y.
+            (Using ``|=`` will update in place).
+        .. describe:: x & y, x &= y
+
+            Returns a new UnfurledMediaItemFlags instance with only flags enabled on both x and y.
+            (Using ``&=`` will update in place).
+        .. describe:: x ^ y, x ^= y
+
+            Returns a new UnfurledMediaItemFlags instance with only flags enabled on one of x or y, but not both.
+            (Using ``^=`` will update in place).
+        .. describe:: ~x
+
+            Returns a new UnfurledMediaItemFlags instance with all flags from x inverted.
+        .. describe:: hash(x)
+
+            Returns the flag's hash.
+        .. describe:: iter(x)
+
+            Returns an iterator of ``(name, value)`` pairs. This allows it
+            to be, for example, constructed as a dict or a list of pairs.
+            Note that aliases are not shown.
+
+        Additionally supported are a few operations on class attributes.
+
+        .. describe:: UnfurledMediaItemFlags.y | UnfurledMediaItemFlags.z, UnfurledMediaItemFlags(y=True) | UnfurledMediaItemFlags.z
+
+            Returns an UnfurledMediaItemFlags instance with all provided flags enabled.
+
+        .. describe:: ~UnfurledMediaItemFlags.y
+
+            Returns an UnfurledMediaItemFlags instance with all flags except ``y`` inverted from their default value.
+
+    .. versionadded:: |vnext|
+
+    Attributes
+    ----------
+    value: :class:`int`
+        The raw value. You should query flags via the properties
+        rather than using this raw value.
+    """
+
+    if TYPE_CHECKING:
+
+        @_generated
+        def __init__(self, *, is_animated: bool = ...) -> None: ...
+
+    @flag_value
+    def is_animated(self):
+        """:class:`bool`: Returns ``True`` if the unfurled media item is animated."""
+        return 1 << 0

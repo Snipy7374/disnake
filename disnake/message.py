@@ -267,13 +267,21 @@ class Attachment(Hashable):
 
         .. versionadded:: 2.9
 
-    clip_participants: :class:`list`\[:class:`User`]
+    clip_participants: :class:`list`[:class:`User`]
         The list of users who were in the stream, if this attachment is a clip.
 
         .. versionadded:: |vnext|
 
     clip_created_at: :class:`datetime.datetime` | :data:`None`
         The creation timestamp, if this attachment is a clip.
+
+        .. versionadded:: |vnext|
+    placeholder: :class:`str` | :data:`None`
+        `Thumbhash <https://evanw.github.io/thumbhash/>`_ placeholder (if image or video) of this attachment.
+
+        .. versionadded:: |vnext|
+    placeholder_version: :class:`int` | :data:`None`
+        Version of the placeholder (if image or video) of this attachment.
 
         .. versionadded:: |vnext|
     """
@@ -294,6 +302,8 @@ class Attachment(Hashable):
         "duration",
         "waveform",
         "_flags",
+        "placeholder",
+        "placeholder_version",
         "clip_participants",
         "clip_created_at",
     )
@@ -322,6 +332,8 @@ class Attachment(Hashable):
         self.clip_created_at: datetime.datetime | None = utils.parse_time(
             data.get("clip_created_at")
         )
+        self.placeholder: str | None = data.get("placeholder")
+        self.placeholder_version: int | None = data.get("placeholder_version")
 
     def is_spoiler(self) -> bool:
         """Whether this attachment contains a spoiler.

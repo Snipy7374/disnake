@@ -50,6 +50,8 @@ class Attachment(TypedDict):
     flags: NotRequired[int]
     clip_participants: NotRequired[list[User]]
     clip_created_at: NotRequired[str]
+    placeholder: NotRequired[str]
+    placeholder_version: NotRequired[int]
     application: NotRequired[AppInfo | None]
 
 
