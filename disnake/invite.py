@@ -406,7 +406,7 @@ class Invite(Hashable):
 
         .. versionadded:: |vnext|
 
-    roles: :class:`tuple`\[:class:`Role`]
+    roles: :class:`tuple`\[:class:`Role`, ...]
         A list of roles that will be assigned to the users when joining, if any.
 
         .. versionadded:: |vnext|
