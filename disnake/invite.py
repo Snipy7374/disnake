@@ -684,7 +684,7 @@ class Invite(Hashable):
         """
         return await self._state.http.update_invite_target_users(self.code, file=file)
 
-    async def fetch_target_users_job_status(self) -> TargetUserJob:
+    async def target_users_job_status(self) -> TargetUserJob:
         r"""|coro|
 
         Get the target users job status.
