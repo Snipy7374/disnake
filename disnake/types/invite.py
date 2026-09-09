@@ -55,5 +55,5 @@ class TargetUsersJobBase(TypedDict):
 
 
 class TargetUsersJobPayload(TargetUsersJobBase):
-    created_at: str
+    created_at: str | None
     completed_at: str | None
