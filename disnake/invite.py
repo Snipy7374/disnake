@@ -682,7 +682,7 @@ class Invite(Hashable):
         HTTPException
             Updating the target users failed.
         """
-        return await self._state.http.update_invite_target_users(self.code, file=file)
+        await self._state.http.update_invite_target_users(self.code, file=file)
 
     async def target_users_job_status(self) -> TargetUserJob:
         r"""|coro|
