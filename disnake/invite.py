@@ -633,7 +633,7 @@ class Invite(Hashable):
         """
         await self._state.http.delete_invite(self.code, reason=reason)
 
-    async def fetch_target_users(self) -> str:
+    async def target_users(self) -> str:
         """|coro|
 
         Fetch the csv file with the target users for this invite.
