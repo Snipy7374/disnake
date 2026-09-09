@@ -1170,7 +1170,7 @@ class UnfurledMediaItem:
         self.width: int | None = None
         self.placeholder: str | None = None
         self.placeholder_version: int | None = None
-        self._flags: int | None = None
+        self._flags: int = 0
         self.content_type: str | None = None
         self.attachment_id: int | None = None
 
@@ -1182,18 +1182,18 @@ class UnfurledMediaItem:
         self.width = _get_as_snowflake(data, "width")
         self.placeholder = data.get("placeholder")
         self.placeholder_version = data.get("placeholder_version")
-        self._flags = data.get("flags")
+        self._flags = data.get("flags", 0)
         self.content_type = data.get("content_type")
         self.attachment_id = _get_as_snowflake(data, "attachment_id")
         return self
 
     @property
     def flags(self):
-        """:class:`UnfurledMediaItemFlags` | :data:`None`: The flags for this media item.
+        """:class:`UnfurledMediaItemFlags`: The flags for this media item.
 
         .. versionadded:: |vnext|
         """
-        return UnfurledMediaItemFlags._from_value(self._flags) if self._flags else None
+        return UnfurledMediaItemFlags._from_value(self._flags)
 
     def to_dict(self) -> UnfurledMediaItemPayload:
         # for sending, only `url` is required, and other fields are ignored regardless

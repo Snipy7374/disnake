@@ -42,8 +42,10 @@ class EmbedProxy:
         if layer is not None:
             self.__dict__.update(layer)
 
+        self._flags = self.__dict__.pop("flags", 0)
+
     def __len__(self) -> int:
-        return len(self.__dict__)
+        return len([k for k in self.__dict__ if not k.startswith("_")])
 
     def __repr__(self) -> str:
         inner = ", ".join((f"{k}={v!r}" for k, v in self.__dict__.items() if not k.startswith("_")))
@@ -61,7 +63,7 @@ class EmbedProxy:
 
         .. versionadded:: |vnext|
         """
-        return EmbedMediaFlags._from_value(self._flags) if self.flags else None  # pyright: ignore[reportArgumentType]
+        return EmbedMediaFlags._from_value(self._flags)
 
 
 if TYPE_CHECKING:
@@ -267,18 +269,12 @@ class Embed:
         self.timestamp = utils.parse_time(data.get("timestamp"))
 
         self._thumbnail = data.get("thumbnail")
-        if self._thumbnail:
-            self._thumbnail["_flags"] = self._thumbnail.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
 
         self._video = data.get("video")
-        if self._video:
-            self._video["_flags"] = self._video.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
         self._provider = data.get("provider")
         self._author = data.get("author")
 
         self._image = data.get("image")
-        if self._image:
-            self._image["_flags"] = self._image.pop("flags")  # pyright: ignore[reportGeneralTypeIssues]
 
         self._footer = data.get("footer")
         self._fields = data.get("fields")
