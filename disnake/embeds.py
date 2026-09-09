@@ -43,7 +43,7 @@ class EmbedProxy:
         if layer is not None:
             self.__dict__.update(layer)
 
-        self._flags = self.__dict__.pop("flags", 0)
+        self._flags: int = self.__dict__.pop("flags", 0)
 
     def __len__(self) -> int:
         return len([k for k in self.__dict__ if not k.startswith("_")])
