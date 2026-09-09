@@ -1191,7 +1191,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 1
 
@@ -1350,7 +1350,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 8
 
@@ -1451,6 +1451,7 @@ class Intents(BaseFlags):
         - :attr:`~disnake.Message.embeds`
         - :attr:`~disnake.Message.attachments`
         - :attr:`~disnake.Message.components`
+        - :attr:`~disnake.Message.poll`
 
         The following cases will always have the above fields:
 
@@ -1469,7 +1470,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 15
 
