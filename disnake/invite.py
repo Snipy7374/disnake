@@ -669,9 +669,9 @@ class Invite(Hashable):
         Parameters
         ----------
         file: :class:`File`
-            The csv file containing the new user ids to target.
-            This file must only have valid user ids separated by ``\n``.
-            A valid file content would look like this::
+            The file with a new list of users able to accept the invite.
+            This file must have one user ID per line, separated by ``\n``.
+            A valid file would look like this::
 
                 710570210159099984
                 1081815963990761542
