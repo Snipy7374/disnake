@@ -37,6 +37,7 @@ if not TYPE_CHECKING:
         raise AttributeError(msg)
 
 
+# TODO: rework these proxy classes into dataclasses
 class EmbedProxy:
     def __init__(self, layer: Mapping[str, Any] | None) -> None:
         if layer is not None:
