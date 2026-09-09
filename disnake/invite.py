@@ -654,7 +654,9 @@ class Invite(Hashable):
         :class:`str`
             The target users for this invite.
         """
-        return await self._state.http.get_invite_target_users(self.code)
+        data = await self._state.http.get_invite_target_users(self.code)
+        # strip csv header
+        return [int(u) for u in data.split("\n")[1:]]
 
     async def update_target_users(self, *, file: File) -> None:
         r"""|coro|
