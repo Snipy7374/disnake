@@ -34,6 +34,14 @@ PartialInviteChannel
 .. autoclass:: PartialInviteChannel()
     :members:
 
+PartialInviteRole
+~~~~~~~~~~~~~~~~~
+
+.. attributetable:: PartialInviteRole
+
+.. autoclass:: PartialInviteRole()
+    :members:
+
 GuildInviteFlags
 ~~~~~~~~~~~~~~~~
 
@@ -48,40 +56,11 @@ Data Classes
 TargetUserJob
 ~~~~~~~~~~~~~
 
-.. class:: TargetUserJob
+.. attributetable:: InviteTargetUsersJob
 
-    A :class:`~typing.NamedTuple` which represents an invite user job from :meth:`Invite.fetch_target_users_job_status`.
+.. autoclass:: InviteTargetUsersJob()
+    :members:
 
-    .. attribute:: status
-
-        The status of the job: :data:`0 (UNSPECIFIED)` is the default value; :data:`1 (PROCESSING)` means the job is currently being processed; :data:`2 (COMPLETED)` means the job has been completed successfully; :data:`3 (FAILED)` means the job has failed, see ``error_message`` attribute for more details
-
-        :type: :class:`int`
-    .. attribute:: total_users
-
-        The total number of targeted users
-
-        :type: :class:`int`
-    .. attribute:: processed_users
-
-        The total number of processed users so far
-
-        :type: :class:`int`
-    .. attribute:: created_at
-
-        The date when the job started
-
-        :type: :class:`~datetime.datetime`
-    .. attribute:: completed_at
-
-        The date when the job was completed, :data:`None` if it's still running
-
-        :type: :class:`~datetime.datetime` | :data:`None`
-    .. attribute:: error_message
-
-        The error message of the job, if any
-
-        :type: :class:`str` | :data:`None`
 
 Enumerations
 ------------
@@ -96,6 +75,12 @@ InviteTarget
 ~~~~~~~~~~~~
 
 .. autoclass:: InviteTarget()
+    :members:
+
+InviteTargetUsersJobStatus
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: InviteTargetUsersJobStatus()
     :members:
 
 Events

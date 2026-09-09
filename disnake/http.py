@@ -9,6 +9,7 @@ import sys
 import weakref
 from collections.abc import Coroutine, Iterable, Mapping, Sequence
 from errno import ECONNRESET
+from io import StringIO
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -33,6 +34,7 @@ from .errors import (
     LoginFailure,
     NotFound,
 )
+from .file import File
 from .gateway import DiscordClientWebSocketResponse, GatewayParams
 from .utils import MISSING
 
@@ -44,7 +46,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from .enums import InteractionResponseType
-    from .file import File
     from .message import Attachment
     from .types import (
         appinfo,
@@ -139,28 +140,20 @@ def set_attachments(payload: dict[str, Any], files: Sequence[File]) -> None:
         payload["attachments"] = attachments
 
 
-def to_multipart(
-    payload: Mapping[str, Any], files: Sequence[File], *, is_csv: bool = False
-) -> list[dict[str, Any]]:
+def to_multipart(payload: Mapping[str, Any], files: Sequence[File]) -> list[dict[str, Any]]:
     """Converts the payload and list of files to a multipart payload,
     as specified by https://docs.discord.com/developers/reference#uploading-files
     """
     multipart: list[dict[str, Any]]
-    if is_csv:
-        multipart = [
-            {"name": "target_users_file", "value": file.fp, "content_type": "text/csv"}
-            for file in files
-        ]
-    else:
-        multipart = [
-            {
-                "name": f"files[{index}]",
-                "value": file.fp,
-                "filename": file.filename,
-                "content_type": "application/octet-stream",
-            }
-            for index, file in enumerate(files)
-        ]
+    multipart = [
+        {
+            "name": f"files[{index}]",
+            "value": file.fp,
+            "filename": file.filename,
+            "content_type": "application/octet-stream",
+        }
+        for index, file in enumerate(files)
+    ]
 
     multipart.append({"name": "payload_json", "value": utils._to_json(payload)})
     return multipart
@@ -1933,7 +1926,7 @@ class HTTPClient:
         unique: bool = True,
         target_type: invite.InviteTargetType | None = None,
         target_user_id: Snowflake | None = None,
-        target_users_file: File | None = None,
+        target_users_file: Sequence[Snowflake] | File | None = None,
         target_application_id: Snowflake | None = None,
         role_ids: list[Snowflake] | None = None,
     ) -> Response[invite.Invite]:
@@ -1958,10 +1951,28 @@ class HTTPClient:
             payload["role_ids"] = role_ids
 
         if target_users_file:
+            if isinstance(target_users_file, File):
+                form: list[dict[str, Any]] = [
+                    {
+                        "name": "target_users_file",
+                        "value": target_users_file.fp,
+                        "content_type": "text/csv",
+                    }
+                ]
+            else:
+                fp = StringIO()
+                for snowflake in target_users_file:
+                    fp.write(str(snowflake) + "\n")
+                fp.seek(0)
+
+                form: list[dict[str, Any]] = [
+                    {"name": "target_users_file", "value": fp, "content_type": "text/csv"}
+                ]
+
             return self.request(
                 r,
                 reason=reason,
-                form=to_multipart(payload=payload, files=[target_users_file], is_csv=True),
+                form=form,
             )
 
         return self.request(r, reason=reason, json=payload)
@@ -1986,15 +1997,29 @@ class HTTPClient:
     def get_invite_target_users(self, invite_id: str) -> Response[str]:
         return self.request(Route("GET", "/invites/{invite_id}/target-users", invite_id=invite_id))
 
-    def update_invite_target_users(self, invite_id: str, *, file: File) -> Response[None]:
+    def update_invite_target_users(
+        self, invite_id: str, *, file: Sequence[Snowflake] | File
+    ) -> Response[None]:
+        if isinstance(file, File):
+            form: list[dict[str, Any]] = [
+                {"name": "target_users_file", "value": file.fp, "content_type": "text/csv"}
+            ]
+        else:
+            fp = StringIO()
+            for snowflake in file:
+                fp.write(str(snowflake) + "\n")
+            fp.seek(0)
+
+            form: list[dict[str, Any]] = [
+                {"name": "target_users_file", "value": fp, "content_type": "text/csv"}
+            ]
+
         return self.request(
             Route("PUT", "/invites/{invite_id}/target-users", invite_id=invite_id),
-            form=to_multipart(payload={}, files=[file], is_csv=True),
+            form=form,
         )
 
-    def get_invite_target_users_job_status(
-        self, invite_id: str
-    ) -> Response[invite.TargetUsersJobStatus]:
+    def get_invite_target_users_job_status(self, invite_id: str) -> Response[invite.TargetUsersJob]:
         return self.request(
             Route("GET", "/invites/{invite_id}/target-users/job-status", invite_id=invite_id)
         )

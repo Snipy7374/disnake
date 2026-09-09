@@ -9,7 +9,7 @@ from typing_extensions import NotRequired
 from .snowflake import Snowflake
 
 
-class RoleBase(TypedDict):
+class PartialRole(TypedDict):
     id: Snowflake
     name: str
     position: int
@@ -19,16 +19,13 @@ class RoleBase(TypedDict):
     unicode_emoji: NotRequired[str | None]
 
 
-class Role(RoleBase):
+class Role(PartialRole):
     hoist: bool
     permissions: str
     managed: bool
     mentionable: bool
     tags: NotRequired[RoleTags]
     flags: int
-
-
-class PartialRole(RoleBase): ...
 
 
 class RoleTags(TypedDict, total=False):

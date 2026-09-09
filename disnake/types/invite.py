@@ -15,6 +15,7 @@ from .user import PartialUser
 
 InviteType = Literal[0, 1, 2]
 InviteTargetType = Literal[1, 2]
+TargetUsersJobStatus = Literal[0, 1, 2, 3]
 
 
 class VanityInvite(TypedDict):
@@ -47,13 +48,10 @@ class Invite(_InviteMetadata):
     roles: NotRequired[list[PartialRole]]
 
 
-class TargetUsersJobBase(TypedDict):
-    status: Literal[0, 1, 2, 3]
+class TargetUsersJob(TypedDict):
+    status: TargetUsersJobStatus
     total_users: int
     processed_users: int
     error_message: str | None
-
-
-class TargetUsersJobStatus(TargetUsersJobBase):
     created_at: str | None
     completed_at: str | None
