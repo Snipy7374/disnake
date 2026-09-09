@@ -54,6 +54,6 @@ class TargetUsersJobBase(TypedDict):
     error_message: str | None
 
 
-class TargetUsersJobPayload(TargetUsersJobBase):
+class TargetUsersJobStatus(TargetUsersJobBase):
     created_at: str | None
     completed_at: str | None
