@@ -167,8 +167,7 @@ async def todo_list(inter: disnake.ApplicationCommandInteraction) -> None:
     TODO_PER_PAGE = 5
     data = await fetch_user_todo_list(inter.author.id)
 
-    last_page_size = len(data) % TODO_PER_PAGE
-    total_pages = len(data) // TODO_PER_PAGE
+    total_pages, last_page_size = divmod(len(data), TODO_PER_PAGE)
     if last_page_size != 0:
         total_pages += 1
 
