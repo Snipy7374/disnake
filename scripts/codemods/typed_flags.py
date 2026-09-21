@@ -3,10 +3,9 @@
 import importlib
 import textwrap
 import types
-from typing import List, Optional, cast
+from typing import cast
 
 import libcst as cst
-import libcst.codemod.visitors as codevisitors
 import libcst.matchers as m
 from libcst import codemod
 
@@ -27,7 +26,7 @@ class FlagTypings(BaseCodemodCommand):
         "Types every flag classes's init method, using overloads or if typechecking blocks."
     )
 
-    flag_classes: List[str]
+    flag_classes: list[str]
     imported_module: types.ModuleType
 
     def transform_module(self, tree: cst.Module) -> cst.Module:
@@ -39,7 +38,7 @@ class FlagTypings(BaseCodemodCommand):
         # import and load the module
         module = importlib.import_module(current_module)
         # we preformulate a list of all flag classes on the imported flags module
-        all_flag_classes: List[str] = []
+        all_flag_classes: list[str] = []
         for attr_name in dir(module):
             obj = getattr(module, attr_name)
             if (
@@ -54,7 +53,7 @@ class FlagTypings(BaseCodemodCommand):
 
         return super().transform_module(tree)
 
-    def visit_ClassDef(self, node: cst.ClassDef) -> Optional[bool]:
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool | None:
         # no reason to continue into classes
         return False
 
@@ -80,8 +79,8 @@ class FlagTypings(BaseCodemodCommand):
         # insert it near the beginning of the class body.
         # we also decorate with @_generated so we can delete it later.
 
-        if_block: Optional[cst.If] = None
-        init: Optional[cst.FunctionDef] = None
+        if_block: cst.If | None = None
+        init: cst.FunctionDef | None = None
         body = list(node.body.body)
         kwonly_params = [
             cst.Param(cst.Name(flag_name), cst.Annotation(cst.Name("bool")), default=cst.Ellipsis())
@@ -116,9 +115,7 @@ class FlagTypings(BaseCodemodCommand):
                 if_block = cast(
                     "cst.If", cst.parse_statement(code, config=self.module.config_for_parsing)
                 )
-                codevisitors.AddImportsVisitor.add_needed_import(
-                    self.context, "typing", "TYPE_CHECKING"
-                )
+                self.add_needed_import("typing", "TYPE_CHECKING")
                 # now we need to add this if_block into the CST of node
                 # find the first function definition and insert it before there
                 for pos, b in enumerate(body):  # noqa: B007
@@ -142,10 +139,8 @@ class FlagTypings(BaseCodemodCommand):
                 decorators=[cst.Decorator(cst.Name("_generated"))],
                 params=old_init.params.with_changes(kwonly_params=kwonly_params, star_kwarg=None),
             )
-            codevisitors.AddImportsVisitor.add_needed_import(
-                self.context, "disnake.utils", "_generated"
-            )
-            node = node.deep_replace(old_init, init)  # type: ignore
+            self.add_needed_import("disnake.utils", "_generated")
+            node = node.deep_replace(old_init, init)  # pyright: ignore[reportAssignmentType]
 
         else:
             # the init exists, so we need to make overloads
@@ -166,16 +161,14 @@ class FlagTypings(BaseCodemodCommand):
                 ],
                 params=init.params.with_changes(kwonly_params=kwonly_params, star_kwarg=None),
             )
-            codevisitors.AddImportsVisitor.add_needed_import(self.context, "typing", "overload")
-            codevisitors.AddImportsVisitor.add_needed_import(
-                self.context, "disnake.utils", "_generated"
-            )
+            self.add_needed_import("typing", "overload")
+            self.add_needed_import("disnake.utils", "_generated")
             empty_init = full_init.with_changes(
                 params=cst.Parameters(
                     params=[cst.Param(cst.Name("self"), cst.Annotation(cst.Name("NoReturn")))]
                 )
             )
-            codevisitors.AddImportsVisitor.add_needed_import(self.context, "typing", "NoReturn")
+            self.add_needed_import("typing", "NoReturn")
             pos = body.index(init)
             body.insert(pos, empty_init)
             body.insert(pos, full_init)

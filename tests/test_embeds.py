@@ -246,7 +246,7 @@ def test_image_remove(file: File) -> None:
 def test_file_params(file: File) -> None:
     embed = Embed()
     with pytest.raises(TypeError):
-        embed.set_image("https://disnake.dev/assets/disnake-logo.png", file=file)  # type: ignore
+        embed.set_image("https://disnake.dev/assets/disnake-logo.png", file=file)  # pyright: ignore[reportCallIssue]
 
     assert embed._files == {}
     assert embed.to_dict() == _BASE
@@ -420,6 +420,7 @@ def test_copy(embed: Embed, file: File) -> None:
     embed.add_field("another field", "woooo")
     embed.set_thumbnail("https://thumbnail.url")
     embed.set_image(file=file)
+    embed._flags = 32
 
     # copying should keep exact dict representation
     copy = embed.copy()
@@ -430,6 +431,7 @@ def test_copy(embed: Embed, file: File) -> None:
     assert embed._files is not copy._files
     assert embed._fields == copy._fields
     assert embed._fields is not copy._fields
+    assert embed._flags == copy._flags
 
 
 def test_copy_empty() -> None:
@@ -471,12 +473,12 @@ def test_copy_fields(embed: Embed) -> None:
 # backwards compatibility
 def test_emptyembed() -> None:
     with pytest.warns(DeprecationWarning):
-        assert embeds.EmptyEmbed is None  # type: ignore
+        assert embeds.EmptyEmbed is None  # pyright: ignore[reportAttributeAccessIssue]
     with pytest.warns(DeprecationWarning):
-        assert Embed.Empty is None  # type: ignore
+        assert Embed.Empty is None  # pyright: ignore[reportAttributeAccessIssue]
     with pytest.warns(DeprecationWarning):
-        assert Embed().Empty is None  # type: ignore
+        assert Embed().Empty is None  # pyright: ignore[reportAttributeAccessIssue]
 
     # make sure unknown module attrs continue to raise
     with pytest.raises(AttributeError):
-        _ = embeds.this_does_not_exist  # type: ignore
+        _ = embeds.this_does_not_exist  # pyright: ignore[reportAttributeAccessIssue]

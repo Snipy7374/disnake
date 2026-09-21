@@ -4,22 +4,14 @@ from __future__ import annotations
 
 import functools
 import operator
+from collections.abc import Callable, Iterator, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
-    Dict,
     Generic,
-    Iterator,
-    List,
     NoReturn,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
-    Union,
     overload,
 )
 
@@ -28,6 +20,10 @@ from .utils import MISSING, _generated
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+    from disnake.types.appinfo import ApplicationIntegrationType
+    from disnake.types.automod import AutoModPresetType
+    from disnake.types.interactions import InteractionContextType
 
 
 __all__ = (
@@ -45,6 +41,9 @@ __all__ = (
     "SKUFlags",
     "ApplicationInstallTypes",
     "InteractionContextTypes",
+    "EmbedFlags",
+    "EmbedMediaFlags",
+    "UnfurledMediaItemFlags",
 )
 
 BF = TypeVar("BF", bound="BaseFlags")
@@ -55,19 +54,19 @@ class flag_value(Generic[T]):
     def __init__(self, func: Callable[[Any], int]) -> None:
         self.flag = func(None)
         self.__doc__ = func.__doc__
-        self._parent: Type[T] = MISSING
+        self._parent: type[T] = MISSING
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, flag_value):
             return self.flag == other.flag
         if isinstance(other, BaseFlags):
             return self._parent is other.__class__ and self.flag == other.value
         return False
 
-    def __ne__(self, other: Any) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
-    def __or__(self, other: Union[flag_value[T], T]) -> T:
+    def __or__(self, other: flag_value[T] | T) -> T:
         if isinstance(other, BaseFlags):
             if self._parent is not other.__class__:
                 msg = f"unsupported operand type(s) for |: flags of '{self._parent.__name__}' and flags of '{other.__class__.__name__}'"
@@ -81,16 +80,16 @@ class flag_value(Generic[T]):
             raise TypeError(msg)
         return self._parent._from_value(self.flag | other.flag)
 
-    def __invert__(self: flag_value[T]) -> T:
+    def __invert__(self) -> T:
         return ~self._parent._from_value(self.flag)
 
     @overload
-    def __get__(self, instance: None, owner: Type[BF]) -> flag_value[BF]: ...
+    def __get__(self, instance: None, owner: type[BF]) -> flag_value[BF]: ...
 
     @overload
-    def __get__(self, instance: BF, owner: Type[BF]) -> bool: ...
+    def __get__(self, instance: BF, owner: type[BF]) -> bool: ...
 
-    def __get__(self, instance: Optional[BF], owner: Type[BF]) -> Any:
+    def __get__(self, instance: BF | None, owner: type[BF]) -> Any:
         if instance is None:
             return self
         return instance._has_flag(self.flag)
@@ -106,12 +105,12 @@ class alias_flag_value(flag_value[T]):
     pass
 
 
-def all_flags_value(flags: Dict[str, int]) -> int:
+def all_flags_value(flags: dict[str, int]) -> int:
     return functools.reduce(operator.or_, flags.values())
 
 
 class BaseFlags:
-    VALID_FLAGS: ClassVar[Dict[str, int]]
+    VALID_FLAGS: ClassVar[dict[str, int]]
     DEFAULT_VALUE: ClassVar[int]
 
     value: int
@@ -127,7 +126,7 @@ class BaseFlags:
             setattr(self, key, value)
 
     @classmethod
-    def __init_subclass__(cls, inverted: bool = False, no_fill_flags: bool = False) -> Type[Self]:
+    def __init_subclass__(cls, inverted: bool = False, no_fill_flags: bool = False) -> type[Self]:
         # add a way to bypass filling flags, eg for ListBaseFlags.
         if no_fill_flags:
             return cls
@@ -154,14 +153,14 @@ class BaseFlags:
         self.value = value
         return self
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, self.__class__):
             return self.value == other.value
         if isinstance(other, flag_value):
             return self.__class__ is other._parent and self.value == other.flag
         return False
 
-    def __ne__(self, other: Any) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
     def __and__(self, other: Self) -> Self:
@@ -177,7 +176,7 @@ class BaseFlags:
         self.value &= other.value
         return self
 
-    def __or__(self, other: Union[Self, flag_value[Self]]) -> Self:
+    def __or__(self, other: Self | flag_value[Self]) -> Self:
         if isinstance(other, flag_value):
             if self.__class__ is not other._parent:
                 msg = f"unsupported operand type(s) for |: flags of '{self.__class__.__name__}' and flags of '{other._parent.__name__}'"
@@ -188,7 +187,7 @@ class BaseFlags:
             raise TypeError(msg)
         return self._from_value(self.value | other.value)
 
-    def __ior__(self, other: Union[Self, flag_value[Self]]) -> Self:
+    def __ior__(self, other: Self | flag_value[Self]) -> Self:
         if isinstance(other, flag_value):
             if self.__class__ is not other._parent:
                 msg = f"unsupported operand type(s) for |=: flags of '{self.__class__.__name__}' and flags of '{other._parent.__name__}'"
@@ -201,7 +200,7 @@ class BaseFlags:
         self.value |= other.value
         return self
 
-    def __xor__(self, other: Union[Self, flag_value[Self]]) -> Self:
+    def __xor__(self, other: Self | flag_value[Self]) -> Self:
         if isinstance(other, flag_value):
             if self.__class__ is not other._parent:
                 msg = f"unsupported operand type(s) for ^: flags of '{self.__class__.__name__}' and flags of '{other._parent.__name__}'"
@@ -212,7 +211,7 @@ class BaseFlags:
             raise TypeError(msg)
         return self._from_value(self.value ^ other.value)
 
-    def __ixor__(self, other: Union[Self, flag_value[Self]]) -> Self:
+    def __ixor__(self, other: Self | flag_value[Self]) -> Self:
         if isinstance(other, flag_value):
             if self.__class__ is not other._parent:
                 msg = f"unsupported operand type(s) for ^=: flags of '{self.__class__.__name__}' and flags of '{other._parent.__name__}'"
@@ -262,7 +261,7 @@ class BaseFlags:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} value={self.value}>"
 
-    def __iter__(self) -> Iterator[Tuple[str, bool]]:
+    def __iter__(self) -> Iterator[tuple[str, bool]]:
         for name, value in self.__class__.__dict__.items():
             if isinstance(value, alias_flag_value):
                 continue
@@ -306,7 +305,7 @@ class ListBaseFlags(BaseFlags, no_fill_flags=True):
         return self
 
     @property
-    def values(self) -> List[int]:
+    def values(self) -> list[int]:
         # This essentially converts an int like `0b100110` into `[1, 2, 5]`,
         # i.e. the exponents of set bits in `self.value`.
         # This may look weird but interestingly it's by far the
@@ -319,9 +318,9 @@ class ListBaseFlags(BaseFlags, no_fill_flags=True):
 
 
 class SystemChannelFlags(BaseFlags, inverted=True):
-    """Wraps up a Discord system channel flag value.
+    r"""Wraps up a Discord system channel flag value.
 
-    Similar to :class:`Permissions`\\, the properties provided are two way.
+    Similar to :class:`Permissions`\, the properties provided are two way.
     You can set and retrieve individual bits using the properties as if they
     were regular bools. This allows you to edit the system flags easily.
 
@@ -943,15 +942,15 @@ class PublicUserFlags(BaseFlags):
         """
         return UserFlags.active_developer.value
 
-    def all(self) -> List[UserFlags]:
-        """List[:class:`UserFlags`]: Returns all public flags the user has."""
+    def all(self) -> list[UserFlags]:
+        r""":class:`list`\[:class:`UserFlags`]: Returns all public flags the user has."""
         return [public_flag for public_flag in UserFlags if self._has_flag(public_flag.value)]
 
 
 class Intents(BaseFlags):
-    """Wraps up a Discord gateway intent flag.
+    r"""Wraps up a Discord gateway intent flag.
 
-    Similar to :class:`Permissions`\\, the properties provided are two way.
+    Similar to :class:`Permissions`\, the properties provided are two way.
     You can set and retrieve individual bits using the properties as if they
     were regular bools.
 
@@ -1055,7 +1054,7 @@ class Intents(BaseFlags):
     @_generated
     def __init__(
         self,
-        value: Optional[int] = None,
+        value: int | None = None,
         *,
         automod: bool = ...,
         automod_configuration: bool = ...,
@@ -1092,10 +1091,10 @@ class Intents(BaseFlags):
     @_generated
     def __init__(self: NoReturn) -> None: ...
 
-    def __init__(self, value: Optional[int] = None, **kwargs: bool) -> None:
+    def __init__(self, value: int | None = None, **kwargs: bool) -> None:
         if value is not None:
             if not isinstance(value, int):
-                msg = f"Expected int, received {type(value).__name__} for argument 'value'."
+                msg = f"Expected int, received {value.__class__.__name__} for parameter 'value'."
                 raise TypeError(msg)
             if value < 0:
                 msg = "Expected a non-negative value."
@@ -1194,7 +1193,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 1
 
@@ -1353,7 +1352,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 8
 
@@ -1454,6 +1453,7 @@ class Intents(BaseFlags):
         - :attr:`~disnake.Message.embeds`
         - :attr:`~disnake.Message.attachments`
         - :attr:`~disnake.Message.components`
+        - :attr:`~disnake.Message.poll`
 
         The following cases will always have the above fields:
 
@@ -1472,7 +1472,7 @@ class Intents(BaseFlags):
         .. note::
 
             Currently, this requires opting in explicitly via the developer portal as well.
-            Bots in over 100 guilds will need to apply to Discord for verification.
+            Bots with more than 10000 users will need to apply to Discord for review.
         """
         return 1 << 15
 
@@ -2282,6 +2282,9 @@ class AutoModKeywordPresets(ListBaseFlags):
             self, *, profanity: bool = ..., sexual_content: bool = ..., slurs: bool = ...
         ) -> None: ...
 
+        @property
+        def values(self) -> list[AutoModPresetType]: ...
+
     @classmethod
     def all(cls) -> Self:
         """A factory method that creates an :class:`AutoModKeywordPresets` instance with everything enabled."""
@@ -2623,12 +2626,52 @@ class AttachmentFlags(BaseFlags):
     if TYPE_CHECKING:
 
         @_generated
-        def __init__(self, *, is_remix: bool = ...) -> None: ...
+        def __init__(
+            self,
+            *,
+            is_animated: bool = ...,
+            is_clip: bool = ...,
+            is_remix: bool = ...,
+            is_spoiler: bool = ...,
+            is_thumbnail: bool = ...,
+        ) -> None: ...
+
+    @flag_value
+    def is_clip(self) -> int:
+        """:class:`bool`: Returns ``True`` if the attachment is a clip from a stream.
+
+        .. versionadded:: |vnext|
+        """
+        return 1 << 0
+
+    @flag_value
+    def is_thumbnail(self) -> int:
+        """:class:`bool`: Returns ``True`` if the attachment is the thumbnail of a thread in a media channel.
+
+        .. versionadded:: |vnext|
+        """
+        return 1 << 1
 
     @flag_value
     def is_remix(self) -> int:
         """:class:`bool`: Returns ``True`` if the attachment has been edited using the Remix feature."""
         return 1 << 2
+
+    @flag_value
+    def is_spoiler(self) -> int:
+        """:class:`bool`: Returns ``True`` if the attachment was marked as a spoiler.
+
+        .. versionadded:: |vnext|
+        """
+        return 1 << 3
+
+    @flag_value
+    def is_animated(self) -> int:
+        """:class:`bool`: Returns ``True`` if the attachment is an animated image.
+
+        .. versionadded:: |vnext|
+        """
+        return 1 << 5
 
 
 class SKUFlags(BaseFlags):
@@ -2801,6 +2844,9 @@ class ApplicationInstallTypes(ListBaseFlags):
         @_generated
         def __init__(self, *, guild: bool = ..., user: bool = ...) -> None: ...
 
+        @property
+        def values(self) -> list[ApplicationIntegrationType]: ...
+
     @classmethod
     def all(cls) -> Self:
         """A factory method that creates an :class:`ApplicationInstallTypes` instance with everything enabled."""
@@ -2896,6 +2942,9 @@ class InteractionContextTypes(ListBaseFlags):
             self, *, bot_dm: bool = ..., guild: bool = ..., private_channel: bool = ...
         ) -> None: ...
 
+        @property
+        def values(self) -> list[InteractionContextType]: ...
+
     @classmethod
     def all(cls) -> Self:
         """A factory method that creates an :class:`InteractionContextTypes` instance with everything enabled."""
@@ -2917,3 +2966,234 @@ class InteractionContextTypes(ListBaseFlags):
     def private_channel(self) -> int:
         """:class:`bool`: Returns ``True`` if the command is usable in DMs and group DMs with other users."""
         return 1 << 2
+
+
+class EmbedFlags(BaseFlags):
+    """Wraps up Discord Embed flags.
+
+    .. collapse:: operations
+
+        .. describe:: x == y
+
+            Checks if two EmbedFlags instances are equal.
+        .. describe:: x != y
+
+            Checks if two EmbedFlags instances are not equal.
+        .. describe:: x <= y
+
+            Checks if an EmbedFlags instance is a subset of another EmbedFlags instance.
+        .. describe:: x >= y
+
+            Checks if an EmbedFlags instance is a superset of another EmbedFlags instance.
+        .. describe:: x < y
+
+            Checks if an EmbedFlags instance is a strict subset of another EmbedFlags instance.
+        .. describe:: x > y
+
+            Checks if an EmbedFlags instance is a strict superset of another EmbedFlags instance.
+        .. describe:: x | y, x |= y
+
+            Returns a new EmbedFlags instance with all enabled flags from both x and y.
+            (Using ``|=`` will update in place).
+        .. describe:: x & y, x &= y
+
+            Returns a new EmbedFlags instance with only flags enabled on both x and y.
+            (Using ``&=`` will update in place).
+        .. describe:: x ^ y, x ^= y
+
+            Returns a new EmbedFlags instance with only flags enabled on one of x or y, but not both.
+            (Using ``^=`` will update in place).
+        .. describe:: ~x
+
+            Returns a new EmbedFlags instance with all flags from x inverted.
+        .. describe:: hash(x)
+
+            Returns the flag's hash.
+        .. describe:: iter(x)
+
+            Returns an iterator of ``(name, value)`` pairs. This allows it
+            to be, for example, constructed as a dict or a list of pairs.
+            Note that aliases are not shown.
+
+        Additionally supported are a few operations on class attributes.
+
+        .. describe:: EmbedFlags.y | EmbedFlags.z, EmbedFlags(y=True) | EmbedFlags.z
+
+            Returns an EmbedFlags instance with all provided flags enabled.
+
+        .. describe:: ~EmbedFlags.y
+
+            Returns an EmbedFlags instance with all flags except ``y`` inverted from their default value.
+
+    .. versionadded:: |vnext|
+
+    Attributes
+    ----------
+    value: :class:`int`
+        The raw value. You should query flags via the properties
+        rather than using this raw value.
+    """
+
+    if TYPE_CHECKING:
+
+        @_generated
+        def __init__(self, *, is_content_inventory_entry: bool = ...) -> None: ...
+
+    @flag_value
+    def is_content_inventory_entry(self):
+        """:class:`bool`: Returns ``True`` if the embed is a reply to an activity card."""
+        return 1 << 5
+
+
+class EmbedMediaFlags(BaseFlags):
+    """Wraps up Discord Embed media flags.
+
+    .. collapse:: operations
+
+        .. describe:: x == y
+
+            Checks if two EmbedMediaFlags instances are equal.
+        .. describe:: x != y
+
+            Checks if two EmbedMediaFlags instances are not equal.
+        .. describe:: x <= y
+
+            Checks if an EmbedMediaFlags instance is a subset of another EmbedMediaFlags instance.
+        .. describe:: x >= y
+
+            Checks if an EmbedMediaFlags instance is a superset of another EmbedMediaFlags instance.
+        .. describe:: x < y
+
+            Checks if an EmbedMediaFlags instance is a strict subset of another EmbedMediaFlags instance.
+        .. describe:: x > y
+
+            Checks if an EmbedMediaFlags instance is a strict superset of another EmbedMediaFlags instance.
+        .. describe:: x | y, x |= y
+
+            Returns a new EmbedMediaFlags instance with all enabled flags from both x and y.
+            (Using ``|=`` will update in place).
+        .. describe:: x & y, x &= y
+
+            Returns a new EmbedMediaFlags instance with only flags enabled on both x and y.
+            (Using ``&=`` will update in place).
+        .. describe:: x ^ y, x ^= y
+
+            Returns a new EmbedMediaFlags instance with only flags enabled on one of x or y, but not both.
+            (Using ``^=`` will update in place).
+        .. describe:: ~x
+
+            Returns a new EmbedMediaFlags instance with all flags from x inverted.
+        .. describe:: hash(x)
+
+            Returns the flag's hash.
+        .. describe:: iter(x)
+
+            Returns an iterator of ``(name, value)`` pairs. This allows it
+            to be, for example, constructed as a dict or a list of pairs.
+            Note that aliases are not shown.
+
+        Additionally supported are a few operations on class attributes.
+
+        .. describe:: EmbedMediaFlags.y | EmbedMediaFlags.z, EmbedMediaFlags(y=True) | EmbedMediaFlags.z
+
+            Returns an EmbedMediaFlags instance with all provided flags enabled.
+
+        .. describe:: ~EmbedMediaFlags.y
+
+            Returns an EmbedMediaFlags instance with all flags except ``y`` inverted from their default value.
+
+    .. versionadded:: |vnext|
+
+    Attributes
+    ----------
+    value: :class:`int`
+        The raw value. You should query flags via the properties
+        rather than using this raw value.
+    """
+
+    if TYPE_CHECKING:
+
+        @_generated
+        def __init__(self, *, is_animated: bool = ...) -> None: ...
+
+    @flag_value
+    def is_animated(self):
+        """:class:`bool`: Returns ``True`` if the embed image is animated."""
+        return 1 << 5
+
+
+class UnfurledMediaItemFlags(BaseFlags):
+    """Wraps up Discord unfurled media item flags.
+
+    .. collapse:: operations
+
+        .. describe:: x == y
+
+            Checks if two UnfurledMediaItemFlags instances are equal.
+        .. describe:: x != y
+
+            Checks if two UnfurledMediaItemFlags instances are not equal.
+        .. describe:: x <= y
+
+            Checks if an UnfurledMediaItemFlags instance is a subset of another UnfurledMediaItemFlags instance.
+        .. describe:: x >= y
+
+            Checks if an UnfurledMediaItemFlags instance is a superset of another UnfurledMediaItemFlags instance.
+        .. describe:: x < y
+
+            Checks if an UnfurledMediaItemFlags instance is a strict subset of another UnfurledMediaItemFlags instance.
+        .. describe:: x > y
+
+            Checks if an UnfurledMediaItemFlags instance is a strict superset of another UnfurledMediaItemFlags instance.
+        .. describe:: x | y, x |= y
+
+            Returns a new UnfurledMediaItemFlags instance with all enabled flags from both x and y.
+            (Using ``|=`` will update in place).
+        .. describe:: x & y, x &= y
+
+            Returns a new UnfurledMediaItemFlags instance with only flags enabled on both x and y.
+            (Using ``&=`` will update in place).
+        .. describe:: x ^ y, x ^= y
+
+            Returns a new UnfurledMediaItemFlags instance with only flags enabled on one of x or y, but not both.
+            (Using ``^=`` will update in place).
+        .. describe:: ~x
+
+            Returns a new UnfurledMediaItemFlags instance with all flags from x inverted.
+        .. describe:: hash(x)
+
+            Returns the flag's hash.
+        .. describe:: iter(x)
+
+            Returns an iterator of ``(name, value)`` pairs. This allows it
+            to be, for example, constructed as a dict or a list of pairs.
+            Note that aliases are not shown.
+
+        Additionally supported are a few operations on class attributes.
+
+        .. describe:: UnfurledMediaItemFlags.y | UnfurledMediaItemFlags.z, UnfurledMediaItemFlags(y=True) | UnfurledMediaItemFlags.z
+
+            Returns an UnfurledMediaItemFlags instance with all provided flags enabled.
+
+        .. describe:: ~UnfurledMediaItemFlags.y
+
+            Returns an UnfurledMediaItemFlags instance with all flags except ``y`` inverted from their default value.
+
+    .. versionadded:: |vnext|
+
+    Attributes
+    ----------
+    value: :class:`int`
+        The raw value. You should query flags via the properties
+        rather than using this raw value.
+    """
+
+    if TYPE_CHECKING:
+
+        @_generated
+        def __init__(self, *, is_animated: bool = ...) -> None: ...
+
+    @flag_value
+    def is_animated(self):
+        """:class:`bool`: Returns ``True`` if the unfurled media item is animated."""
+        return 1 << 0

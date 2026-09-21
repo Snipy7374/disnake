@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, Protocol
 
+from typing_extensions import TypeVar
+
+import disnake
 from disnake.enums import Enum
 from disnake.member import Member
 
@@ -15,8 +19,6 @@ from .errors import MaxConcurrencyReached
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from ...message import Message
-
 __all__ = (
     "BucketType",
     "Cooldown",
@@ -24,6 +26,19 @@ __all__ = (
     "DynamicCooldownMapping",
     "MaxConcurrency",
 )
+
+
+# Context, Interaction, or Message
+class ContextType(Protocol):
+    @property
+    def author(self) -> disnake.abc.User: ...
+    @property
+    def guild(self) -> disnake.Guild | None: ...
+    @property
+    def channel(self) -> disnake.abc.MessageableChannel: ...
+
+
+ContextTypeT = TypeVar("ContextTypeT", bound=ContextType, infer_variance=True)
 
 
 class BucketType(Enum):
@@ -47,7 +62,7 @@ class BucketType(Enum):
     .. versionadded:: 1.3
     """
 
-    def get_key(self, msg: Message) -> Any:
+    def get_key(self, msg: ContextType) -> Any:
         if self is BucketType.user:
             return msg.author.id
         elif self is BucketType.guild:
@@ -57,15 +72,18 @@ class BucketType(Enum):
         elif self is BucketType.member:
             return ((msg.guild and msg.guild.id), msg.author.id)
         elif self is BucketType.category:
-            return (msg.channel.category or msg.channel).id  # type: ignore
+            return (msg.channel.category or msg.channel).id  # pyright: ignore[reportAttributeAccessIssue]
         elif self is BucketType.role:
             # if author is not a Member we are in a private-channel context; returning its id
             # yields the same result as for a guild with only the @everyone role
             return (
-                msg.author.top_role if msg.guild and isinstance(msg.author, Member) else msg.channel
+                msg.author.top_role
+                if msg.guild is not None and isinstance(msg.author, Member)
+                else msg.channel
             ).id
+        return None
 
-    def __call__(self, msg: Message) -> Any:
+    def __call__(self, msg: ContextType) -> Any:
         return self.get_key(msg)
 
 
@@ -82,19 +100,19 @@ class Cooldown:
 
     __slots__ = ("rate", "per", "_window", "_tokens", "_last")
 
-    def __init__(self, rate: float, per: float) -> None:
+    def __init__(self, rate: int, per: float) -> None:
         self.rate: int = int(rate)
         self.per: float = float(per)
         self._window: float = 0.0
         self._tokens: int = self.rate
         self._last: float = 0.0
 
-    def get_tokens(self, current: Optional[float] = None) -> int:
+    def get_tokens(self, current: float | None = None) -> int:
         """Returns the number of available tokens before rate limiting is applied.
 
         Parameters
         ----------
-        current: Optional[:class:`float`]
+        current: :class:`float` | :data:`None`
             The time in seconds since Unix epoch to calculate tokens at.
             If not supplied then :func:`time.time()` is used.
 
@@ -112,12 +130,12 @@ class Cooldown:
             tokens = self.rate
         return tokens
 
-    def get_retry_after(self, current: Optional[float] = None) -> float:
+    def get_retry_after(self, current: float | None = None) -> float:
         """Returns the time in seconds until the cooldown will be reset.
 
         Parameters
         ----------
-        current: Optional[:class:`float`]
+        current: :class:`float` | :data:`None`
             The current time in seconds since Unix epoch.
             If not supplied, then :func:`time.time()` is used.
 
@@ -134,18 +152,18 @@ class Cooldown:
 
         return 0.0
 
-    def update_rate_limit(self, current: Optional[float] = None) -> Optional[float]:
+    def update_rate_limit(self, current: float | None = None) -> float | None:
         """Updates the cooldown rate limit.
 
         Parameters
         ----------
-        current: Optional[:class:`float`]
+        current: :class:`float` | :data:`None`
             The time in seconds since Unix epoch to update the rate limit at.
             If not supplied, then :func:`time.time()` is used.
 
         Returns
         -------
-        Optional[:class:`float`]
+        :class:`float` | :data:`None`
             The retry-after time in seconds if rate limited.
         """
         current = current or time.time()
@@ -163,6 +181,7 @@ class Cooldown:
 
         # we're not so decrement our tokens
         self._tokens -= 1
+        return None
 
     def reset(self) -> None:
         """Reset the cooldown to its initial state."""
@@ -183,21 +202,21 @@ class Cooldown:
         return f"<Cooldown rate: {self.rate} per: {self.per} window: {self._window} tokens: {self._tokens}>"
 
 
-class CooldownMapping:
+class CooldownMapping(Generic[ContextTypeT]):
     def __init__(
         self,
-        original: Optional[Cooldown],
-        type: Callable[[Message], Any],
+        original: Cooldown | None,
+        type: Callable[[ContextTypeT], Any],
     ) -> None:
         if not callable(type):
             msg = "Cooldown type must be a BucketType or callable"
             raise TypeError(msg)
 
-        self._cache: Dict[Any, Cooldown] = {}
-        self._cooldown: Optional[Cooldown] = original
-        self._type: Callable[[Message], Any] = type
+        self._cache: dict[Any, Cooldown] = {}
+        self._cooldown: Cooldown | None = original
+        self._type: Callable[[ContextTypeT], Any] = type
 
-    def copy(self) -> CooldownMapping:
+    def copy(self) -> CooldownMapping[ContextTypeT]:
         ret = CooldownMapping(self._cooldown, self._type)
         ret._cache = self._cache.copy()
         return ret
@@ -207,17 +226,17 @@ class CooldownMapping:
         return self._cooldown is not None
 
     @property
-    def type(self) -> Callable[[Message], Any]:
+    def type(self) -> Callable[[ContextTypeT], Any]:
         return self._type
 
     @classmethod
-    def from_cooldown(cls, rate: float, per: float, type) -> Self:
+    def from_cooldown(cls, rate: int, per: float, type) -> Self:
         return cls(Cooldown(rate, per), type)
 
-    def _bucket_key(self, msg: Message) -> Any:
+    def _bucket_key(self, msg: ContextTypeT) -> Any:
         return self._type(msg)
 
-    def _verify_cache_integrity(self, current: Optional[float] = None) -> None:
+    def _verify_cache_integrity(self, current: float | None = None) -> None:
         # we want to delete all cache objects that haven't been used
         # in a cooldown window. e.g. if we have a  command that has a
         # cooldown of 60s and it has not been used in 60s then that key should be deleted
@@ -230,12 +249,14 @@ class CooldownMapping:
         # This method can be overridden in subclasses
         return self._type is BucketType.default
 
-    def create_bucket(self, message: Message) -> Cooldown:
-        return self._cooldown.copy()  # type: ignore
+    def create_bucket(self, message: ContextTypeT) -> Cooldown:
+        assert self._cooldown is not None
+        return self._cooldown.copy()
 
-    def get_bucket(self, message: Message, current: Optional[float] = None) -> Cooldown:
+    def get_bucket(self, message: ContextTypeT, current: float | None = None) -> Cooldown:
         if self._is_default():
-            return self._cooldown  # type: ignore
+            assert self._cooldown is not None
+            return self._cooldown
 
         self._verify_cache_integrity(current)
         key = self._bucket_key(message)
@@ -249,20 +270,20 @@ class CooldownMapping:
         return bucket
 
     def update_rate_limit(
-        self, message: Message, current: Optional[float] = None
-    ) -> Optional[float]:
+        self, message: ContextTypeT, current: float | None = None
+    ) -> float | None:
         bucket = self.get_bucket(message, current)
         return bucket.update_rate_limit(current)
 
 
-class DynamicCooldownMapping(CooldownMapping):
+class DynamicCooldownMapping(CooldownMapping[ContextTypeT]):
     def __init__(
-        self, factory: Callable[[Message], Cooldown], type: Callable[[Message], Any]
+        self, factory: Callable[[ContextTypeT], Cooldown], type: Callable[[ContextTypeT], Any]
     ) -> None:
         super().__init__(None, type)
-        self._factory: Callable[[Message], Cooldown] = factory
+        self._factory: Callable[[ContextTypeT], Cooldown] = factory
 
-    def copy(self) -> DynamicCooldownMapping:
+    def copy(self) -> DynamicCooldownMapping[ContextTypeT]:
         ret = DynamicCooldownMapping(self._factory, self._type)
         ret._cache = self._cache.copy()
         return ret
@@ -275,7 +296,7 @@ class DynamicCooldownMapping(CooldownMapping):
         # In dynamic mappings even default bucket types may have custom behavior
         return False
 
-    def create_bucket(self, message: Message) -> Cooldown:
+    def create_bucket(self, message: ContextTypeT) -> Cooldown:
         return self._factory(message)
 
 
@@ -297,7 +318,7 @@ class _Semaphore:
     def __init__(self, number: int) -> None:
         self.value: int = number
         self.loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
-        self._waiters: Deque[asyncio.Future] = deque()
+        self._waiters: deque[asyncio.Future[None]] = deque()
 
     def __repr__(self) -> str:
         return f"<_Semaphore value={self.value} waiters={len(self._waiters)}>"
@@ -343,7 +364,7 @@ class MaxConcurrency:
     __slots__ = ("number", "per", "wait", "_mapping")
 
     def __init__(self, number: int, *, per: BucketType, wait: bool) -> None:
-        self._mapping: Dict[Any, _Semaphore] = {}
+        self._mapping: dict[Any, _Semaphore] = {}
         self.per: BucketType = per
         self.number: int = number
         self.wait: bool = wait
@@ -362,10 +383,10 @@ class MaxConcurrency:
     def __repr__(self) -> str:
         return f"<MaxConcurrency per={self.per!r} number={self.number} wait={self.wait}>"
 
-    def get_key(self, message: Message) -> Any:
+    def get_key(self, message: ContextType) -> Any:
         return self.per.get_key(message)
 
-    async def acquire(self, message: Message) -> None:
+    async def acquire(self, message: ContextType) -> None:
         key = self.get_key(message)
 
         try:
@@ -377,7 +398,7 @@ class MaxConcurrency:
         if not acquired:
             raise MaxConcurrencyReached(self.number, self.per)
 
-    async def release(self, message: Message) -> None:
+    async def release(self, message: ContextType) -> None:
         # Technically there's no reason for this function to be async
         # But it might be more useful in the future
         key = self.get_key(message)
