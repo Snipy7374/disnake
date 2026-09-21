@@ -4,20 +4,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import os
 from pathlib import Path
-from typing import Any, List, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import disnake
 from disnake import ui
 from disnake.ext import commands
 
+if TYPE_CHECKING:
+    from disnake.ui._types import MessageComponents
+
+
 bot = commands.Bot(command_prefix=commands.when_mentioned)
 
 
 @bot.command()
-async def send_components(ctx: commands.Context):
+async def send_components(ctx: commands.Context) -> None:
     media_data: Any = ...  # placeholder for actual data
 
     await ctx.send(
@@ -43,7 +48,7 @@ class Website(NamedTuple):
     image_url: str
 
 
-async def fetch_websites() -> List[Website]:
+async def fetch_websites() -> list[Website]:
     return [
         Website(
             name="Disnake Dev",
@@ -95,7 +100,7 @@ async def cool_message(inter: disnake.ApplicationCommandInteraction) -> None:
 # Let's make an example about media gallery and sending local files
 @bot.slash_command()
 async def media_gallery(inter: disnake.ApplicationCommandInteraction) -> None:
-    file_names = list(Path("assets/").glob("*.png"))
+    file_names = await asyncio.to_thread(lambda: list(Path("assets/").glob("*.png")))
     media = [
         disnake.MediaGalleryItem(media=f"attachment://{file_path.name}", description=file_path.name)
         for file_path in file_names
@@ -172,25 +177,22 @@ async def todo_list(inter: disnake.ApplicationCommandInteraction) -> None:
         total_pages += 1
 
     paginator_buttons_disabled = len(data) == TODO_PER_PAGE
-    await send_page(inter, 0, total_pages, last_page_size, paginator_buttons_disabled)
+    data = await fetch_user_todo_list(inter.author.id)
+    await inter.send(
+        components=build_todo_components(
+            inter.author, data, 0, total_pages, last_page_size, paginator_buttons_disabled
+        )
+    )
 
 
-async def interaction_check(
-    inter: disnake.MessageInteraction, invoker_id: int, user_id: int
-) -> None:
-    if int(invoker_id) != user_id:
-        await inter.send("You can't interact with this component :(", ephemeral=True)
-
-
-async def send_page(
-    inter: disnake.ApplicationCommandInteraction | disnake.MessageInteraction,
+def build_todo_components(
+    author: disnake.abc.Snowflake,
+    data: list[dict[str, Any]],
     current_page: int,
     total_pages: int,
     last_page_size: int,
     paginator_buttons_disabled: bool = False,
-) -> None:
-    # ideally you cache this somehow instead of making one DB call for every button click
-    data = await fetch_user_todo_list(inter.author.id)
+) -> MessageComponents:
     pages = []
     base = 0
 
@@ -214,7 +216,7 @@ async def send_page(
                         # just some empty chars, don't mind them
                         accessory=ui.Button(
                             label="⋮‏‏‎ ‎‏‏‎ ‎‏‏‎ ‎Options",  # noqa: PLE2502
-                            custom_id=f"todo_options:{inter.author.id}:{d['id']}",
+                            custom_id=f"todo_options:{author.id}:{d['id']}",
                         ),
                     )
                 )
@@ -228,33 +230,33 @@ async def send_page(
     else:
         pages.append(ui.TextDisplay("__No TODOs yet :(__"))
 
-    components = [
+    return [
         ui.Container(
-            ui.TextDisplay(f"# `{inter.author}`'s TODO list"),
+            ui.TextDisplay(f"# `{author}`'s TODO list"),
             *pages[current_page],
         ),
         ui.ActionRow(
             ui.Button(
                 emoji="⏪",
-                custom_id=f"todo_f_back_btn:{inter.author.id}:{current_page}:{total_pages}:{last_page_size}",
+                custom_id=f"todo_f_back_btn:{author.id}:{current_page}:{total_pages}:{last_page_size}",
                 # this button is disabled if all the buttons for the paginator are disabled or
                 # if we are at the first page
                 disabled=paginator_buttons_disabled or (current_page == 0),
             ),
             ui.Button(
                 emoji="◀️",
-                custom_id=f"todo_back_btn:{inter.author.id}:{current_page}:{total_pages}:{last_page_size}",
+                custom_id=f"todo_back_btn:{author.id}:{current_page}:{total_pages}:{last_page_size}",
                 disabled=paginator_buttons_disabled,
             ),
             ui.Button(label=f"{current_page + 1}/{total_pages}", disabled=True),
             ui.Button(
                 emoji="▶️",
-                custom_id=f"todo_next_btn:{inter.author.id}:{current_page}:{total_pages}:{last_page_size}",
+                custom_id=f"todo_next_btn:{author.id}:{current_page}:{total_pages}:{last_page_size}",
                 disabled=paginator_buttons_disabled,
             ),
             ui.Button(
                 emoji="⏩",
-                custom_id=f"todo_f_next_btn:{inter.author.id}:{current_page}:{total_pages}:{last_page_size}",
+                custom_id=f"todo_f_next_btn:{author.id}:{current_page}:{total_pages}:{last_page_size}",
                 # this button is disabled if all the buttons for the paginator are disabled or
                 # if we are at the last page
                 disabled=paginator_buttons_disabled or (current_page == (total_pages - 1)),
@@ -262,124 +264,60 @@ async def send_page(
         ),
     ]
 
-    if isinstance(inter, disnake.ApplicationCommandInteraction):
-        # this means that we are sending the first page
-        return await inter.send(components=components)
+
+@bot.listen(disnake.Event.message_interaction)
+async def _(inter: disnake.MessageInteraction) -> None:
+    # I suggest namespacing (prefixing) all components with the "UI name" they come from,
+    # for easy interception and avoiding potential name clashes
+    if not inter.data.custom_id.startswith("todo:"):
+        return
+
+    _, component_id, data = inter.data.custom_id.split(":", 2)
+    invoker_id, current_page, total_pages, last_page_size = map(int, data.split(":"))
+
+    if inter.author.id != invoker_id:
+        await inter.response.send_message(
+            "You can't interact with this component :(", ephemeral=True
+        )
+        return
+
+    match component_id:
+        case "todo_back_btn":
+            current_page = (current_page - 1 + total_pages) % total_pages
+
+        case "todo_f_back_btn":
+            current_page = 0
+
+        case "todo_next_btn":
+            current_page = (current_page + 1) % total_pages
+
+        case "todo_f_next_btn":
+            current_page = total_pages - 1
+
+        case "todo_options":
+            await inter.send(
+                "Implement this logic yourself! You should now understand how this works.",
+                ephemeral=True,
+            )
+            return
+
+        case _:
+            # this could happen if you changed/removed a component's ID in code,
+            # but a UI created with old code still exists somewhere
+            raise Warning("/todo - unknown component: %s", component_id)
+
+    todo_list = await fetch_user_todo_list(inter.author.id)
+    components = build_todo_components(
+        inter.author, todo_list, current_page, total_pages, last_page_size
+    )
+
+    # no need to isinstance() branch on interaction type, you always
+    # .send_message in /command callbacks and .edit_message in on_message_interaction
     await inter.response.edit_message(components=components)
 
 
-@bot.listen(disnake.Event.button_click)
-async def back_btn(inter: disnake.MessageInteraction) -> None:
-    if not inter.component.custom_id:
-        return
-
-    # remember that this is a normal listener and will get called
-    # for every global button click so we ignore every other component
-    # except for the one we really care (todo_back_btn)
-    if not inter.component.custom_id.startswith("todo_back_btn"):
-        return
-
-    # we get our data from the button custom id that we built previously
-    invoker_id, current_page, total_pages, last_page_size = map(
-        int, inter.component.custom_id.split(":")[1:]
-    )
-    await interaction_check(inter, invoker_id, inter.author.id)
-
-    # we implement a pac-man like effect, if you are at the first page
-    # it will bring you at the last page
-    if current_page == 0:
-        current_page = total_pages - 1
-    else:
-        current_page -= 1
-
-    await send_page(inter, current_page, total_pages, last_page_size)
-
-
-@bot.listen(disnake.Event.button_click)
-async def fast_back_btn(inter: disnake.MessageInteraction) -> None:
-    if not inter.component.custom_id:
-        return
-
-    if not inter.component.custom_id.startswith("todo_f_back_btn"):
-        return
-
-    # remember that this is a normal listener and will get called
-    # for every global button click so we ignore every other component
-    # except for the one we really care (todo_next_btn)
-    invoker_id, current_page, total_pages, last_page_size = map(
-        int, inter.component.custom_id.split(":")[1:]
-    )
-    await interaction_check(inter, invoker_id, inter.author.id)
-
-    # bring the user to the first page
-    current_page = 0
-    await send_page(inter, current_page, total_pages, last_page_size)
-
-
-@bot.listen(disnake.Event.button_click)
-async def next_btn(inter: disnake.MessageInteraction) -> None:
-    if not inter.component.custom_id:
-        return
-
-    if not inter.component.custom_id.startswith("todo_next_btn"):
-        return
-
-    # remember that this is a normal listener and will get called
-    # for every global button click so we ignore every other component
-    # except for the one we really care (todo_next_btn)
-    invoker_id, current_page, total_pages, last_page_size = map(
-        int, inter.component.custom_id.split(":")[1:]
-    )
-    await interaction_check(inter, invoker_id, inter.author.id)
-
-    # we implement a pac-man like effect, if you are at the last page
-    # it will bring you at the first page
-    if current_page == (total_pages - 1):
-        current_page = 0
-    else:
-        current_page += 1
-
-    await send_page(inter, current_page, total_pages, last_page_size)
-
-
-@bot.listen(disnake.Event.button_click)
-async def fast_next_btn(inter: disnake.MessageInteraction) -> None:
-    if not inter.component.custom_id:
-        return
-
-    if not inter.component.custom_id.startswith("todo_f_next_btn"):
-        return
-
-    # remember that this is a normal listener and will get called
-    # for every global button click so we ignore every other component
-    # except for the one we really care (todo_next_btn)
-    invoker_id, current_page, total_pages, last_page_size = map(
-        int, inter.component.custom_id.split(":")[1:]
-    )
-    await interaction_check(inter, invoker_id, inter.author.id)
-
-    # bring the user to the last page
-    current_page = total_pages - 1
-    await send_page(inter, current_page, total_pages, last_page_size)
-
-
-@bot.listen(disnake.Event.button_click)
-async def options_btn(inter: disnake.MessageInteraction) -> None:
-    if not inter.component.custom_id:
-        return
-
-    if not inter.component.custom_id.startswith("todo_options"):
-        return
-
-    invoker_id, _ = map(int, inter.component.custom_id.split(":")[1:])
-    await interaction_check(inter, invoker_id, inter.author.id)
-    await inter.send(
-        "Implement this logic yourself! You should now understand how this works.", ephemeral=True
-    )
-
-
 @bot.event
-async def on_ready():
+async def on_ready() -> None:
     print(f"Logged in as {bot.user} (ID: {bot.user.id})\n------")
 
 
